@@ -24,10 +24,14 @@ has an `action` column plus the union of all per-task columns; each operation
 processes only rows matching its action.
 
 ```
-action,extension,server_ip,user_id,phone_login,phone_pass,user_password,full_name,alias_id
+action,user_id,user_password,phone_extension,server_ip,phone_pass,full_name,alias_id
 ```
 
 Actions: `copy_phone`, `update_user`, `delete_phone`, `delete_alias`.
 
+- `phone_extension` doubles as `extension` (copy/delete phone) and `phone_login`
+  (update_user); `extension` and `phone_login` are also accepted directly.
 - Range mode (copy/update/delete phone) sets `phone_login`/`phone_pass` to the ID.
 - CSV mode for `update_user` also honors `user_password` and `full_name` (or `name`).
+- Delete-phone rows resolve `server_ip` automatically from the server; copy-phone
+  rows resolve it from the source phone.

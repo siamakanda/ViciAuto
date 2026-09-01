@@ -142,8 +142,10 @@ class Operations:
         """Read the unified CSV and return rows, optionally filtered by `action`.
 
         The unified CSV has an `action` column plus the union of all per-task
-        columns (extension, server_ip, user_id, phone_login, phone_pass,
-        user_password, full_name, alias_id). `name`/`agent_name` are accepted as
+        columns (user_id, user_password, phone_extension, server_ip, phone_pass,
+        full_name, alias_id). `phone_extension` doubles as both `extension`
+        (copy/delete phone) and `phone_login` (update_user); `extension` and
+        `phone_login` are also accepted directly. `name`/`agent_name` are
         aliases for `full_name`.
         """
         if not os.path.exists(path):
@@ -161,6 +163,9 @@ class Operations:
                 rec = {k.strip(): (v or "").strip() for k, v in row.items() if k}
                 if action and rec.get("action", "").lower() != action:
                     continue
+                if rec.get("phone_extension"):
+                    rec.setdefault("extension", rec["phone_extension"])
+                    rec.setdefault("phone_login", rec["phone_extension"])
                 if not rec.get("full_name"):
                     for alias in ("name", "agent_name"):
                         if rec.get(alias):
