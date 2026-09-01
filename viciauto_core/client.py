@@ -108,3 +108,15 @@ class ViciClient:
         html = self.fetch_admin({"ADD": "12000000000"})
         ids = set(re.findall(r'alias_id=([^&"\']+)', html))
         return sorted(ids)
+
+    def phone_ip_map(self) -> dict:
+        """Return {extension: server_ip} for every phone on the server.
+
+        Used to auto-resolve the server_ip of a target extension so operators
+        don't have to type it. When an extension exists on multiple servers,
+        the first (sorted) IP wins.
+        """
+        mapping = {}
+        for ext, ip in self.list_phones():
+            mapping.setdefault(ext, ip)
+        return mapping

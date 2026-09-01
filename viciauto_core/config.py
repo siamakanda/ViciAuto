@@ -79,6 +79,17 @@ class Config:
         }
         self.save()
 
+    def remove_profile(self, name: str) -> None:
+        self.data.setdefault("profiles", {}).pop(name, None)
+        self.save()
+
+    def update_profile(self, name: str, **fields) -> None:
+        profiles = self.data.setdefault("profiles", {})
+        if name not in profiles:
+            return
+        profiles[name].update({k: v for k, v in fields.items() if v is not None})
+        self.save()
+
     def list_profiles(self) -> None:
         if not self.profiles:
             print(f"{Fore.YELLOW}No saved profiles.")
@@ -88,5 +99,5 @@ class Config:
         for i, (name, p) in enumerate(self.profiles.items(), 1):
             verify = "SSL-verify" if p.get("verify_ssl", True) else "no-verify"
             print(f"  [{Fore.GREEN}{i}{Style.RESET_ALL}] {Fore.WHITE}{name:<15}{Style.RESET_ALL} "
-                  f"-> {p.get('base_url', '?')}  (user: {p.get('admin_user', '?')})  [{verify}]")
+                  f"-> {p.get('base_url', '?')}  (admin: {p.get('admin_user', '?')})  [{verify}]")
         print("-" * 65)

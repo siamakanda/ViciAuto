@@ -9,12 +9,19 @@ import tqdm
 from . import ui
 from .client import ViciClient
 from .config import ADMIN_ENDPOINT, API_ENDPOINT, Config, DEFAULT_SERVER_IP, SAMPLE_CSV_PATH
-from .operations import Operations
+from .operations import (
+    ACTION_COPY_PHONE,
+    ACTION_DELETE_ALIAS,
+    ACTION_DELETE_PHONE,
+    ACTION_UPDATE_USER,
+    Operations,
+)
 
 
 class ViciAutoApp:
     def __init__(self):
         self.config = Config()
+        self._dry_run = self.config.defaults("dry_run", False)
 
     # ------------------------------------------------------------------
     # Top level
@@ -28,45 +35,116 @@ class ViciAutoApp:
     # Profile selection & login
     # ------------------------------------------------------------------
     def _select_profile(self, allow_new: bool = True) -> dict:
-        self.config.list_profiles()
-        choices = list(self.config.profiles.items())
-
-        if allow_new:
-            print(f"  [{Fore.GREEN}N{Style.RESET_ALL}] New login / add profile")
-
-        if not choices and not allow_new:
-            print(f"{Fore.RED}No profiles configured.{Style.RESET_ALL}")
-            sys.exit(1)
-
         while True:
-            prompt = f"  Select profile [1-{len(choices)}]" + (" or N" if allow_new else "") + ": "
-            raw = input(prompt).strip()
-            if allow_new and raw.lower() in ("n", "new"):
+            choices = list(self.config.profiles.items())
+
+            if not choices and not allow_new:
+                print(f"{Fore.RED}No profiles configured.{Style.RESET_ALL}")
+                sys.exit(1)
+
+            options = [(str(i + 1), f"{name}  ->  {p.get('base_url', '?')}  (admin: {p.get('admin_user', '?')})")
+                       for i, (name, p) in enumerate(choices)]
+            if allow_new:
+                options.append(("A", "Add a new profile"))
+            if choices:
+                options.append(("E", "Edit a profile"))
+                options.append(("R", "Remove a profile"))
+            options.append(("0", "Back"))
+
+            raw = ui.menu("Saved Profiles", options, prompt="Option", style="dot")
+            if raw == "A":
                 return self._login_flow()
-            if raw.isdigit() and 1 <= int(raw) <= len(choices):
-                return self.config.get_profile(choices[int(raw) - 1][0])
-            print(f"{Fore.RED}  Invalid selection.{Style.RESET_ALL}")
+            if raw == "E":
+                self._edit_profile()
+                continue
+            if raw == "R":
+                self._remove_profile()
+                continue
+            if raw == "0":
+                return None
+            return self.config.get_profile(choices[int(raw) - 1][0])
+
+    def _edit_profile(self) -> None:
+        choices = list(self.config.profiles.items())
+        if not choices:
+            print(f"{Fore.YELLOW}  No profiles to edit.{Style.RESET_ALL}")
+            return
+        options = [(str(i + 1), f"{name}  ->  {p.get('base_url', '?')}  (admin: {p.get('admin_user', '?')})")
+                   for i, (name, p) in enumerate(choices)]
+        raw = ui.menu("Edit Profile", options, prompt="Profile", style="dot")
+        name = choices[int(raw) - 1][0]
+        profile = self.config.get_profile(name)
+
+        base_url = input(f"  Server URL [{profile['base_url']}]: ").strip()
+        admin_user = input(f"  Admin user [{profile['admin_user']}]: ").strip()
+        admin_pass = input("  Admin password (Enter to keep): ").strip()
+        verify_ssl = input(f"  Verify SSL? (y/n, Enter to keep [{ 'yes' if profile.get('verify_ssl', False) else 'no' }]): ").strip().lower()
+
+        fields = {}
+        if base_url:
+            if not base_url.startswith(("http://", "https://")):
+                base_url = "https://" + base_url
+            fields["base_url"] = base_url.rstrip("/")
+        if admin_user:
+            fields["admin_user"] = admin_user
+        if admin_pass:
+            fields["admin_pass"] = admin_pass
+        if verify_ssl in ("y", "yes"):
+            fields["verify_ssl"] = True
+        elif verify_ssl in ("n", "no"):
+            fields["verify_ssl"] = False
+
+        if not fields:
+            print(f"{Fore.YELLOW}  Nothing changed.{Style.RESET_ALL}")
+            return
+
+        candidate = dict(profile)
+        candidate.update(fields)
+
+        print(f"{Fore.CYAN}  Verifying connection...{Style.RESET_ALL}")
+        client = ViciClient(candidate)
+        if not client.validate_login():
+            print(f"{Fore.RED}  Login failed — changes not saved.{Style.RESET_ALL}")
+            return
+
+        self.config.update_profile(name, **fields)
+        print(f"{Fore.GREEN}  Updated profile '{name}'.{Style.RESET_ALL}")
+
+    def _remove_profile(self) -> None:
+        choices = list(self.config.profiles.items())
+        if not choices:
+            print(f"{Fore.YELLOW}  No profiles to remove.{Style.RESET_ALL}")
+            return
+        options = [(str(i + 1), f"{name}  ->  {p.get('base_url', '?')}  (admin: {p.get('admin_user', '?')})")
+                   for i, (name, p) in enumerate(choices)]
+        raw = ui.menu("Remove Profile", options, prompt="Profile", style="dot")
+        name = choices[int(raw) - 1][0]
+        print(f"  Remove profile '{name}'?")
+        if not ui.confirm():
+            return
+        self.config.remove_profile(name)
+        print(f"{Fore.GREEN}  Removed profile '{name}'.{Style.RESET_ALL}")
 
     def _login_flow(self) -> dict:
-        print(f"\n{Fore.CYAN}{Style.BRIGHT}{'─' * 60}")
-        print(f"  ViciDial Login")
-        print(f"{'─' * 60}{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}{'─' * ui.MENU_WIDTH}")
+        print(f"  Add Profile")
+        print(f"{'─' * ui.MENU_WIDTH}{Style.RESET_ALL}")
 
-        domain = input("  Domain (e.g. https://dm3.callengine.org): ").strip()
+        domain = input("  Server URL (e.g. https://dm3.callengine.org): ").strip()
         if not domain:
-            print(f"{Fore.RED}  Domain is required.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  Server URL is required.{Style.RESET_ALL}")
             return self._login_flow()
         if not domain.startswith(("http://", "https://")):
             domain = "https://" + domain
 
-        user = input("  User: ").strip()
+        user = input("  Admin user: ").strip()
         if not user:
-            print(f"{Fore.RED}  User is required.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  Admin user is required.{Style.RESET_ALL}")
             return self._login_flow()
 
-        password = input("  Password: ").strip()
+        password = input("  Admin password: ").strip()
         if not password:
-            print(f"{Fore.RED}  Password is required.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  Admin password is required.{Style.RESET_ALL}")
             return self._login_flow()
 
         verify_ssl = input("  Verify SSL? (Y/n): ").strip().lower() not in ("n", "no")
@@ -80,26 +158,26 @@ class ViciAutoApp:
             "api_endpoint": API_ENDPOINT,
         }
 
-        print(f"{Fore.CYAN}  Validating credentials...{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}  Verifying connection...{Style.RESET_ALL}")
         client = ViciClient(profile)
         if not client.validate_login():
-            print(f"{Fore.RED}  Login failed: invalid credentials or insufficient API permissions.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  Login failed — invalid credentials or insufficient API permissions.{Style.RESET_ALL}")
             retry = input("  Try again? (Y/n): ").strip().lower()
             if retry not in ("n", "no"):
                 return self._login_flow()
             sys.exit(1)
 
-        print(f"{Fore.GREEN}  Login successful.{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}  Connected successfully.{Style.RESET_ALL}")
 
-        save = input(f"  Save this login as a profile? ({Fore.GREEN}Y{Style.RESET_ALL}/{Fore.RED}n{Style.RESET_ALL}): ").strip().lower()
+        save = input(f"  Save this connection as a profile? ({Fore.GREEN}Y{Style.RESET_ALL}/{Fore.RED}n{Style.RESET_ALL}): ").strip().lower()
         if save in ("", "y", "yes"):
             while True:
                 name = input("  Profile name: ").strip()
                 if not name:
-                    print(f"{Fore.RED}  Name required.{Style.RESET_ALL}")
+                    print(f"{Fore.RED}  A name is required.{Style.RESET_ALL}")
                     continue
                 if name in self.config.profiles:
-                    overwrite = input(f"  Profile '{name}' exists. Overwrite? (y/N): ").strip().lower()
+                    overwrite = input(f"  Profile '{name}' already exists. Overwrite? (y/N): ").strip().lower()
                     if overwrite not in ("y", "yes"):
                         continue
                 break
@@ -116,26 +194,34 @@ class ViciAutoApp:
     # ------------------------------------------------------------------
     def _bulk_menu(self, profile: dict) -> None:
         while True:
-            print()
-            print(f"{Fore.CYAN}{Style.BRIGHT}{'═' * 60}")
-            print(f"  Bulk Operations — {profile['_name']} ({profile['base_url']})")
-            print(f"{'═' * 60}{Style.RESET_ALL}")
-            print(f"  {Fore.WHITE}1{Style.RESET_ALL}. Update User Phones & Pass   (range / CSV)")
-            print(f"  {Fore.WHITE}2{Style.RESET_ALL}. Bulk Phone Creation / Copy   (range / CSV)")
-            print(f"  {Fore.WHITE}3{Style.RESET_ALL}. Bulk Phone Delete & Alias Delete (range / CSV)")
-            print(f"  {Fore.WHITE}4{Style.RESET_ALL}. Delete All Phones & Phone Alias List")
-            print(f"  {Fore.WHITE}5{Style.RESET_ALL}. Switch profile")
-            print(f"  {Fore.WHITE}0{Style.RESET_ALL}. Back")
-            print(f"{Fore.CYAN}{'═' * 60}{Style.RESET_ALL}")
+            subtitle = f"  {profile['_name']}  ->  {profile['base_url']}"
+            if self._dry_run:
+                subtitle += f"  {Fore.YELLOW}{Style.BRIGHT}[DRY-RUN]{Style.RESET_ALL}"
 
-            choice = input("  Select option: ").strip()
+            choice = ui.menu(
+                "Bulk Operations",
+                [
+                    ("1", "Copy Phones"),
+                    ("2", "Phone Credentials Configuration"),
+                    ("3", "Delete Phones & Aliases"),
+                    ("4", "Delete All Phones & Aliases"),
+                    ("5", "Switch Profile"),
+                    ("D", f"Toggle dry-run  ({'ON' if self._dry_run else 'OFF'})"),
+                    ("0", "Back"),
+                ],
+                prompt="Option",
+                subtitle=subtitle,
+                style="dot",
+            )
 
             if choice == "0":
                 return
+            elif choice == "D":
+                self._dry_run = not self._dry_run
             elif choice == "1":
-                self._update_user_phones(profile)
-            elif choice == "2":
                 self._create_phones(profile)
+            elif choice == "2":
+                self._update_user_phones(profile)
             elif choice == "3":
                 self._delete_phones_and_aliases(profile)
             elif choice == "4":
@@ -144,8 +230,6 @@ class ViciAutoApp:
                 new_profile = self._select_profile(allow_new=True)
                 if new_profile:
                     profile = new_profile
-            else:
-                print(f"{Fore.RED}  Invalid option.{Style.RESET_ALL}")
 
     # ------------------------------------------------------------------
     # Bulk runner
@@ -159,7 +243,7 @@ class ViciAutoApp:
                 destructive=destructive,
                 delay_ms=self.config.defaults("request_delay_ms", 200),
                 max_retries=self.config.defaults("max_retries", 2),
-                dry_run=self.config.defaults("dry_run", False),
+                dry_run=self._dry_run,
             )
         finally:
             session.close()
@@ -179,23 +263,20 @@ class ViciAutoApp:
     # Option 2 — Bulk phone creation / copy
     # ------------------------------------------------------------------
     def _create_phones(self, profile: dict) -> None:
-        default_server_ip = profile.get("server_ip", DEFAULT_SERVER_IP)
-
-        mode = input("  Mode: (R)ange or (C)SV? [R]: ").strip().lower()
-        if mode in ("c", "csv"):
+        mode = ui.range_or_csv_menu()
+        if mode == "C":
             records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+                action=ACTION_COPY_PHONE,
             )
-            for r in records:
-                r.setdefault("extension", r.get("phone_login") or r.get("user_id"))
+            records = [r for r in records if r.get("extension")]
         else:
-            server_ip = input(f"  Server IP [{default_server_ip}]: ").strip() or default_server_ip
-            start = ui.prompt_int("  Start extension: ", 4001)
-            end = ui.prompt_int("  End extension:   ", 4050)
+            start = ui.prompt_int("  First extension: ", 4001)
+            end = ui.prompt_int("  Last extension:  ", 4050)
             if start > end:
-                print(f"{Fore.RED}  Start cannot exceed End.{Style.RESET_ALL}")
+                print(f"{Fore.RED}  First extension must be lower than or equal to the last.{Style.RESET_ALL}")
                 return
-            records = [{"extension": str(i), "server_ip": server_ip}
+            records = [{"extension": str(i), "server_ip": ""}
                        for i in range(start, end + 1)]
 
         if not records:
@@ -203,9 +284,19 @@ class ViciAutoApp:
 
         copy_phone = input("  Copy settings from phone [7001]: ").strip() or "7001"
         conf_secret = ui.generate_conf_secret()
-        conf_secret = input(f"  Conference secret [{conf_secret}]: ").strip() or conf_secret
+        conf_secret = input(f"  Conference secret (press Enter to use generated) [{conf_secret}]: ").strip() or conf_secret
 
         client = ViciClient(profile)
+
+        source_ip = client.phone_ip_map().get(copy_phone)
+        if not source_ip:
+            source_ip = profile.get("server_ip", DEFAULT_SERVER_IP)
+            print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Source phone {copy_phone} not found on server; using {source_ip}.")
+
+        for rec in records:
+            if not rec.get("server_ip"):
+                rec["server_ip"] = source_ip
+
         ops = Operations(client)
 
         def worker(rec):
@@ -217,36 +308,46 @@ class ViciAutoApp:
     # Option 3 — Bulk phone delete & alias delete
     # ------------------------------------------------------------------
     def _delete_phones_and_aliases(self, profile: dict) -> None:
-        print(f"\n  Delete target:")
-        print(f"    [{Fore.GREEN}1{Style.RESET_ALL}] Phones only")
-        print(f"    [{Fore.GREEN}2{Style.RESET_ALL}] Phone aliases only")
-        print(f"    [{Fore.GREEN}3{Style.RESET_ALL}] Both")
-        target = input("  Choose [1]: ").strip() or "1"
+        target = ui.menu(
+            "Delete Target",
+            [
+                ("1", "Phones only"),
+                ("2", "Aliases only"),
+                ("3", "Both phones and aliases"),
+            ],
+            prompt="Target",
+            default="1",
+        )
 
-        default_server_ip = profile.get("server_ip", DEFAULT_SERVER_IP)
-        server_ip = default_server_ip
-        if target in ("1", "3"):
-            server_ip = input(f"  Server IP [{default_server_ip}]: ").strip() or default_server_ip
+        phones = []
+        aliases = []
 
-        if target in ("1", "3"):
-            phones = self._collect_phone_items(server_ip)
-            if phones:
-                client = ViciClient(profile)
+        if target == "3":
+            phones, aliases = self._collect_both_delete()
+        elif target == "1":
+            phones = self._collect_phone_items()
+        else:
+            aliases = self._collect_alias_items()
+
+        if phones:
+            client = ViciClient(profile)
+            phones = self._resolve_phone_server_ips(client, phones)
+            if not phones:
+                print(f"{Fore.YELLOW}  No target phones found on the server.{Style.RESET_ALL}")
+            else:
                 ops = Operations(client)
                 self._run(profile, "Delete Phones", phones, ops, ops.delete_phone, "phone", destructive=True)
 
-        if target in ("2", "3"):
-            aliases = self._collect_alias_items()
-            if aliases:
-                client = ViciClient(profile)
-                ops = Operations(client)
-                self._run(profile, "Delete Phone Aliases", aliases, ops, ops.delete_alias, "alias", destructive=True)
+        if aliases:
+            client = ViciClient(profile)
+            ops = Operations(client)
+            self._run(profile, "Delete Phone Aliases", aliases, ops, ops.delete_alias, "alias", destructive=True)
 
     # ------------------------------------------------------------------
     # Option 4 — Delete all phones & aliases
     # ------------------------------------------------------------------
     def _delete_all(self, profile: dict) -> None:
-        print(f"{Fore.RED}{Style.BRIGHT}  This will DELETE every phone and phone alias on the server.{Style.RESET_ALL}")
+        print(f"{Fore.RED}{Style.BRIGHT}  This permanently deletes every phone and alias on the server.{Style.RESET_ALL}")
         if not ui.confirm_destructive():
             return
 
@@ -258,7 +359,12 @@ class ViciAutoApp:
         try:
             phones = client.list_phones()
             aliases = client.list_aliases()
-            print(f"\n  Found {len(phones)} phones and {len(aliases)} aliases.\n")
+
+            if self._dry_run:
+                print(f"\n  {Fore.YELLOW}{Style.BRIGHT}[DRY-RUN] Would delete {len(phones)} phones and {len(aliases)} aliases on the server.{Style.RESET_ALL}\n")
+                return
+
+            print(f"\n  Found {len(phones)} phones and {len(aliases)} aliases on the server.\n")
 
             delay_ms = self.config.defaults("request_delay_ms", 200)
 
@@ -289,7 +395,7 @@ class ViciAutoApp:
             session.close()
 
         print()
-        border = "=" * 60
+        border = "─" * ui.MENU_WIDTH
         print(f"{Fore.CYAN}{Style.BRIGHT}{border}")
         print(f"  Phones deleted : {ok_phones}/{len(phone_items)}")
         print(f"  Aliases deleted: {ok_aliases}/{len(alias_items)}")
@@ -303,54 +409,89 @@ class ViciAutoApp:
     # ------------------------------------------------------------------
     # Collection helpers
     # ------------------------------------------------------------------
-    def _collect_user_records(self) -> list:
-        print(f"\n  Update user phones — input source:")
-        print(f"    [{Fore.GREEN}1{Style.RESET_ALL}] Range")
-        print(f"    [{Fore.GREEN}2{Style.RESET_ALL}] CSV")
-        mode = input("  Choose [1]: ").strip() or "1"
+    def _collect_user_records(self, mode: str = None) -> list:
+        mode = mode or ui.range_or_csv_menu()
 
-        if mode == "2":
+        if mode == "C":
             return Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+                action=ACTION_UPDATE_USER,
             )
 
-        start = ui.prompt_int("  Start user ID: ", 5001)
-        end = ui.prompt_int("  End user ID:   ", 5015)
+        start = ui.prompt_int("  First user ID: ", 5001)
+        end = ui.prompt_int("  Last user ID:  ", 5015)
         if start > end:
-            print(f"{Fore.RED}  Start cannot exceed End.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  First user ID must be lower than or equal to the last.{Style.RESET_ALL}")
             return []
         return [{"user_id": str(i), "phone_login": str(i), "phone_pass": str(i)}
                 for i in range(start, end + 1)]
 
-    def _collect_phone_items(self, server_ip: str) -> list:
-        mode = input("  Mode: (R)ange or (C)SV? [R]: ").strip().lower()
-        if mode in ("c", "csv"):
+    def _collect_phone_items(self, mode: str = None) -> list:
+        mode = mode or ui.range_or_csv_menu()
+        if mode == "C":
             records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+                action=ACTION_DELETE_PHONE,
             )
-            for r in records:
-                r.setdefault("extension", r.get("phone_login") or r.get("user_id"))
-            return [{"extension": r["extension"], "server_ip": server_ip}
+            return [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
                     for r in records if r.get("extension")]
 
-        start = ui.prompt_int("  Start extension: ", 4001)
-        end = ui.prompt_int("  End extension:   ", 4050)
+        start = ui.prompt_int("  First extension: ", 4001)
+        end = ui.prompt_int("  Last extension:  ", 4050)
         if start > end:
-            print(f"{Fore.RED}  Start cannot exceed End.{Style.RESET_ALL}")
+            print(f"{Fore.RED}  First extension must be lower than or equal to the last.{Style.RESET_ALL}")
             return []
-        return [{"extension": str(i), "server_ip": server_ip}
+        return [{"extension": str(i), "server_ip": ""}
                 for i in range(start, end + 1)]
 
-    def _collect_alias_items(self) -> list:
-        mode = input("  Alias input: (L)ist or (C)SV? [L]: ").strip().lower()
-        if mode in ("c", "csv"):
+    def _collect_alias_items(self, mode: str = None) -> list:
+        mode = mode or ui.list_or_csv_menu()
+        if mode == "C":
             records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+                action=ACTION_DELETE_ALIAS,
             )
             return [{"alias_id": r["alias_id"]} for r in records if r.get("alias_id")]
 
-        raw = input("  Comma-separated alias_id values: ").strip()
+        raw = input("  Comma-separated alias IDs: ").strip()
         if not raw:
             print(f"{Fore.YELLOW}  No aliases provided.{Style.RESET_ALL}")
             return []
         return [{"alias_id": x.strip()} for x in raw.split(",") if x.strip()]
+
+    def _collect_both_delete(self):
+        mode = ui.range_or_csv_menu()
+        if mode == "C":
+            records = Operations.read_csv(
+                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+            )
+            phones = [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
+                      for r in records
+                      if r.get("action", "").lower() == ACTION_DELETE_PHONE and r.get("extension")]
+            aliases = [{"alias_id": r["alias_id"]}
+                       for r in records
+                       if r.get("action", "").lower() == ACTION_DELETE_ALIAS and r.get("alias_id")]
+            return phones, aliases
+
+        phones = self._collect_phone_items(mode="R")
+        aliases = self._collect_alias_items(mode="L")
+        return phones, aliases
+
+    def _resolve_phone_server_ips(self, client, records: list) -> list:
+        """Resolve each extension's server_ip from the server, dropping misses.
+
+        Extensions absent from the phone list are skipped with a warning; a
+        CSV-supplied server_ip is kept only as a fallback when the extension
+        is not on the server.
+        """
+        ip_map = client.phone_ip_map()
+        resolved = []
+        for rec in records:
+            ext = rec["extension"]
+            if ext in ip_map:
+                resolved.append({"extension": ext, "server_ip": ip_map[ext]})
+            elif rec.get("server_ip"):
+                resolved.append({"extension": ext, "server_ip": rec["server_ip"]})
+            else:
+                print(f"  {Fore.YELLOW}[SKIP]{Style.RESET_ALL} {ext} - not found on server")
+        return resolved

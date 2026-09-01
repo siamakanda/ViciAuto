@@ -9,6 +9,11 @@ from .client import ADD_ACTION_CODE
 from .config import DEFAULT_SERVER_IP
 from .response import ResponseStatus, parse_response
 
+ACTION_COPY_PHONE = "copy_phone"
+ACTION_UPDATE_USER = "update_user"
+ACTION_DELETE_PHONE = "delete_phone"
+ACTION_DELETE_ALIAS = "delete_alias"
+
 
 class Operations:
     def __init__(self, client):
@@ -37,6 +42,10 @@ class Operations:
             params["phone_login"] = record["phone_login"]
         if record.get("phone_pass"):
             params["phone_pass"] = record["phone_pass"]
+        if record.get("user_password"):
+            params["user_password"] = record["user_password"]
+        if record.get("full_name"):
+            params["full_name"] = record["full_name"]
 
         text = self.client.api(self.session, "update_user", **params)
         resp = parse_response(text)
@@ -89,7 +98,7 @@ class Operations:
                 "DUPLICATE": "Already exists",
             })
         text = http_resp.text.upper()
-        if "PHONE ADDED" in text or ext in text:
+        if "PHONE ADDED" in text or f"PHONE {ext} ADDED" in text:
             return True, "Created"
         if "ALREADY EXISTS" in text or "DUPLICATE" in text:
             return False, "Already exists"
@@ -129,7 +138,14 @@ class Operations:
     # CSV parsing
     # ------------------------------------------------------------------
     @staticmethod
-    def read_csv(path: str) -> list:
+    def read_csv(path: str, action: str = None) -> list:
+        """Read the unified CSV and return rows, optionally filtered by `action`.
+
+        The unified CSV has an `action` column plus the union of all per-task
+        columns (extension, server_ip, user_id, phone_login, phone_pass,
+        user_password, full_name, alias_id). `name`/`agent_name` are accepted as
+        aliases for `full_name`.
+        """
         if not os.path.exists(path):
             print(f"{Fore.RED}Error: CSV not found: {path}{Style.RESET_ALL}")
             return []
@@ -143,8 +159,13 @@ class Operations:
 
             for row in reader:
                 rec = {k.strip(): (v or "").strip() for k, v in row.items() if k}
-                if not any(k in rec for k in ("user_id", "extension", "alias_id")):
+                if action and rec.get("action", "").lower() != action:
                     continue
+                if not rec.get("full_name"):
+                    for alias in ("name", "agent_name"):
+                        if rec.get(alias):
+                            rec["full_name"] = rec[alias]
+                            break
                 records.append(rec)
 
         if not records:

@@ -27,7 +27,9 @@
       "Shell(rmdir:*)",
       "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\probe_login.py\")",
       "Shell(python -c \"import viciauto_core; from viciauto_core.app import ViciAutoApp; from viciauto_core.operations import Operations; from viciauto_core.client import ViciClient; from viciauto_core.config import Config; print('IMPORTS_OK')\")",
-      "Shell(python -c \"from viciauto_core.response import parse_response, ResponseStatus; cases=[('SUCCESS: update_user USER HAS BEEN UPDATED - 6666|4001|','success'),('ERROR: update_user YOU MUST USE A VALID PHONE LOGIN, THIS IS AN OPTIONAL FIELD: |6666|4001|0|0','error'),('NOTICE: update_phone USER DOES NOT HAVE PERMISSION TO DELETE PHONES - 6666|0','notice'),('PHONE ADDED','unknown')]; [print(repr(parse_response(t).status), '==', exp) for t,exp in cases]\")"
+      "Shell(python -c \"from viciauto_core.response import parse_response, ResponseStatus; cases=[('SUCCESS: update_user USER HAS BEEN UPDATED - 6666|4001|','success'),('ERROR: update_user YOU MUST USE A VALID PHONE LOGIN, THIS IS AN OPTIONAL FIELD: |6666|4001|0|0','error'),('NOTICE: update_phone USER DOES NOT HAVE PERMISSION TO DELETE PHONES - 6666|0','notice'),('PHONE ADDED','unknown')]; [print(repr(parse_response(t).status), '==', exp) for t,exp in cases]\")",
+      "powershell",
+      "Shell(python -m py_compile viciauto_core\\app.py)"
     ],
     "deny": [],
     "defaultMode": "default"

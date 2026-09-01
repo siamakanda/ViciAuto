@@ -14,3 +14,11 @@
 - Prefers centralizing response parsing into a single place rather than having each worker do its own fragile substring matching. Confidence: 0.8
 - Prefers organizing CSV/input templates into a dedicated subfolder (e.g. templates/) rather than leaving loose files cluttering the project root. Confidence: 0.6
 - Prefers a single unified CSV with an explicit `action` column (one row per action) for bulk operations, rather than separate per-task CSV files. Confidence: 0.6
+- Prefers keeping a working application as-is (minimal change) rather than undertaking a large refactor/upgrade when the current version already meets the need. Confidence: 0.6
+- Prefers deleting unneeded one-off files (planning notes, import CSVs, __pycache__) rather than leaving them cluttering the project root, while still archiving legacy/reference scripts separately. Confidence: 0.7
+- Prefers not to add password masking to CLI login flows (explicitly declined it when offered). Confidence: 0.6
+- Prefers polished, clear, and consistent CLI presentation — parallel menu labels, precise prompts, unambiguous wording, and a uniform menu style over terse or ad-hoc text/rendering. Confidence: 0.8
+- Prefers numbered menu options rendered with a trailing dot (e.g. `1.`), rather than bracketed keys (e.g. `[1]`). Confidence: 0.7
+- Prefers concise menu labels that name the action without implementation-detail suffixes (e.g. "Copy Phones" instead of "Create / copy phones (range / CSV)"). Confidence: 0.6
+- Prefers mnemonic single-letter menu keys matching the action's initial (e.g. "A" for Add, not "N" for New). Confidence: 0.6
+- Prefers numeric menu options rendered in `1.` dot format rather than `[1]` bracketed-key format. Confidence: 0.6
