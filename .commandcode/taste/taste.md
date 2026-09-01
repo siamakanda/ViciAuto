@@ -1,0 +1,16 @@
+- Prefers consolidating automation/tooling scripts into Python rather than maintaining separate browser-console JavaScript scripts. Confidence: 0.8
+- Prefers menu-driven, dependency-light CLI/TUI interfaces, avoiding new dependencies (chose menu-driven over Rich/Textual). Confidence: 0.7
+- Prefers archiving superseded/legacy scripts into a separate reference folder (e.g. "learning_resources") rather than deleting them, keeping the project root clean. Confidence: 0.6
+- Prefers bulk operations to accept input via either a range (start/end) or CSV file import, offering both rather than one fixed method. Confidence: 0.8
+- Prefers persisting login credentials as named profiles in a config file for reuse across runs rather than re-entering them each session. Confidence: 0.7
+- Prefers to clarify the plan and requirements before writing code, rather than jumping straight into implementation. Confidence: 0.9
+- Prefers plans delivered as a written document (e.g. a markdown file) rather than discussed only in conversation. Confidence: 0.7
+- Prefers destructive/irreversible actions to carry explicit safety measures (confirmation prompts, DELETE-type confirmation, dry-run). Confidence: 0.8
+- Prefers empty CSV values to mean "skip/leave unchanged" rather than clearing a field. Confidence: 0.7
+- Prefers modular code organization, splitting tasks/operations into separate Python files/modules rather than a single monolithic script, so the app is easier to update and fix. Confidence: 0.9
+- Prefers to clarify the plan and requirements before writing code, rather than jumping straight into implementation. Confidence: 0.9
+- Prefers to validate API success by inspecting the response body (e.g. SUCCESS/ERROR text) rather than trusting HTTP status alone, since the target API returns HTTP 200 even on error responses. Confidence: 0.8
+- Prefers keeping secrets/credentials out of the repository (via .gitignore and environment-variable overrides) rather than storing plaintext credentials in config files. Confidence: 0.8
+- Prefers centralizing response parsing into a single place rather than having each worker do its own fragile substring matching. Confidence: 0.8
+- Prefers organizing CSV/input templates into a dedicated subfolder (e.g. templates/) rather than leaving loose files cluttering the project root. Confidence: 0.6
+- Prefers a single unified CSV with an explicit `action` column (one row per action) for bulk operations, rather than separate per-task CSV files. Confidence: 0.6

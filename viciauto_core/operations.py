@@ -1,0 +1,153 @@
+"""Bulk operation workers and CSV parsing."""
+
+import csv
+import os
+
+from colorama import Fore, Style
+
+from .client import ADD_ACTION_CODE
+from .config import DEFAULT_SERVER_IP
+from .response import ResponseStatus, parse_response
+
+
+class Operations:
+    def __init__(self, client):
+        self.client = client
+        self.profile = client.profile
+        self.session = None
+
+    def set_session(self, session) -> None:
+        self.session = session
+
+    @staticmethod
+    def _friendly_error(reason: str, mapping: dict) -> str:
+        """Map a ViciDial reason to a friendly message, falling back to the raw reason."""
+        upper = reason.upper()
+        for needle, friendly in mapping.items():
+            if needle in upper:
+                return friendly
+        return reason[:60] if reason else "Unknown error"
+
+    # ------------------------------------------------------------------
+    # User operations
+    # ------------------------------------------------------------------
+    def update_user_phone(self, record: dict) -> tuple:
+        params = {"agent_user": record["user_id"]}
+        if record.get("phone_login"):
+            params["phone_login"] = record["phone_login"]
+        if record.get("phone_pass"):
+            params["phone_pass"] = record["phone_pass"]
+
+        text = self.client.api(self.session, "update_user", **params)
+        resp = parse_response(text)
+        if resp.ok:
+            return True, "Updated"
+        return False, self._friendly_error(resp.reason, {
+            "USER DOES NOT EXIST": "User does not exist",
+            "VALID PHONE LOGIN": "Phone login must be an existing phone or alias",
+        })
+
+    # ------------------------------------------------------------------
+    # Phone operations
+    # ------------------------------------------------------------------
+    def copy_phone(self, record: dict, copy_phone: str, conf_secret: str) -> tuple:
+        ext = record["extension"]
+        server_ip = record.get("server_ip") or self.profile.get("server_ip", DEFAULT_SERVER_IP)
+
+        payload = {
+            "ADD": ADD_ACTION_CODE,
+            "DB": "0",
+            "new_extension": ext,
+            "new_dialplan_number": ext,
+            "new_voicemail_id": ext,
+            "new_outbound_cid": ext,
+            "new_server_ip": server_ip,
+            "new_login": ext,
+            "new_pass": ext,
+            "new_conf_secret": conf_secret,
+            "new_fullname": f"Extension {ext}",
+            "source_phone": f"{copy_phone}|{server_ip}",
+            "SUBMIT": "SUBMIT",
+        }
+
+        try:
+            http_resp = self.client.post_admin(payload)
+        except Exception as e:
+            return False, str(e)[:60]
+
+        if not http_resp.ok:
+            return False, f"HTTP {http_resp.status_code}"
+
+        resp = parse_response(http_resp.text)
+        # admin.php copy flow does not always emit a STATUS: line; fall back to
+        # body inspection for the success/duplicate cues.
+        if resp.ok:
+            return True, "Created"
+        if resp.status == ResponseStatus.ERROR:
+            return False, self._friendly_error(resp.reason, {
+                "ALREADY EXISTS": "Already exists",
+                "DUPLICATE": "Already exists",
+            })
+        text = http_resp.text.upper()
+        if "PHONE ADDED" in text or ext in text:
+            return True, "Created"
+        if "ALREADY EXISTS" in text or "DUPLICATE" in text:
+            return False, "Already exists"
+        return False, f"HTTP {http_resp.status_code}"
+
+    def delete_phone(self, record: dict) -> tuple:
+        extension = record["extension"]
+        server_ip = record.get("server_ip") or self.profile.get("server_ip", DEFAULT_SERVER_IP)
+        text = self.client.api(
+            self.session, "update_phone",
+            extension=extension,
+            server_ip=server_ip,
+            delete_phone="Y",
+        )
+        resp = parse_response(text)
+        if resp.ok:
+            return True, "Deleted"
+        return False, self._friendly_error(resp.reason, {
+            "PHONE DOES NOT EXIST": "Phone not found",
+            "PERMISSION TO DELETE PHONES": "No permission to delete phones",
+        })
+
+    def delete_alias(self, record: dict) -> tuple:
+        text = self.client.api(
+            self.session, "update_phone_alias",
+            alias_id=record["alias_id"],
+            delete_alias="Y",
+        )
+        resp = parse_response(text)
+        if resp.ok:
+            return True, "Deleted"
+        return False, self._friendly_error(resp.reason, {
+            "PHONE ALIAS DOES NOT EXIST": "Alias not found",
+        })
+
+    # ------------------------------------------------------------------
+    # CSV parsing
+    # ------------------------------------------------------------------
+    @staticmethod
+    def read_csv(path: str) -> list:
+        if not os.path.exists(path):
+            print(f"{Fore.RED}Error: CSV not found: {path}{Style.RESET_ALL}")
+            return []
+
+        records = []
+        with open(path, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+                print(f"{Fore.RED}Error: CSV has no header.{Style.RESET_ALL}")
+                return []
+
+            for row in reader:
+                rec = {k.strip(): (v or "").strip() for k, v in row.items() if k}
+                if not any(k in rec for k in ("user_id", "extension", "alias_id")):
+                    continue
+                records.append(rec)
+
+        if not records:
+            print(f"{Fore.RED}Error: no rows found.{Style.RESET_ALL}")
+            return []
+        return records

@@ -1,0 +1,87 @@
+(async () => {
+    // ===== Ask for inputs =====
+    const serverIP = prompt("Server IP", "93.114.133.26")?.trim();
+    const confSecret = prompt("Conference Secret", "GxBPO2026")?.trim();
+    const copyPhone = prompt("Copy From Phone", "4001")?.trim();
+
+    const start = parseInt(prompt("Start Extension", "4001"), 10);
+    const end = parseInt(prompt("End Extension", "4050"), 10);
+
+    if (
+        !serverIP ||
+        !confSecret ||
+        !copyPhone ||
+        isNaN(start) ||
+        isNaN(end) ||
+        start > end
+    ) {
+        alert("Invalid input.");
+        return;
+    }
+
+    console.clear();
+    console.log("==================================");
+    console.log("Bulk Phone Creator");
+    console.log("Server IP :", serverIP);
+    console.log("Copy From :", copyPhone);
+    console.log("Range     :", `${start}-${end}`);
+    console.log("==================================");
+
+    let success = 0;
+    let failed = 0;
+
+    for (let ext = start; ext <= end; ext++) {
+
+        const body = new URLSearchParams({
+            ADD: "21222222222",
+            DB: "0",
+            new_extension: ext,
+            new_dialplan_number: ext,
+            new_voicemail_id: ext,
+            new_outbound_cid: ext,
+            new_server_ip: serverIP,
+            new_login: ext,
+            new_pass: ext,
+            new_conf_secret: confSecret,
+            new_fullname: ext,
+            source_phone: `${copyPhone}|${serverIP}`,
+            SUBMIT: "SUBMIT"
+        });
+
+        try {
+
+            const res = await fetch("./admin.php", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: body.toString()
+            });
+
+            const text = await res.text();
+
+            if (text.includes("ERROR")) {
+                console.error(`❌ ${ext} -> ERROR`);
+                failed++;
+            } else {
+                console.log(`✅ Phone ${ext} created`);
+                success++;
+            }
+
+        } catch (e) {
+            console.error(`❌ ${ext}`, e);
+            failed++;
+        }
+
+        // 50ms delay
+        await new Promise(r => setTimeout(r, 50));
+    }
+
+    console.log("==================================");
+    console.log(`Created : ${success}`);
+    console.log(`Failed  : ${failed}`);
+    console.log("==================================");
+
+    alert(`Done!\n\nCreated: ${success}\nFailed: ${failed}`);
+})();

@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(python -m py_compile viciauto.py)",
+      "Shell(python viciauto.py --list-profiles)",
+      "Shell(mkdir:*)",
+      "Shell(move:*)",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\auth_diag.py\")",
+      "Shell(del:*)",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\delete_diag.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\discover.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\discover2.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\login_check.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\enumerate.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\enumerate2.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\alias_mod.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\alias_raw.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\alias_codes.py\")",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\alias_final.py\")",
+      "Shell(python -c import ast; ast.parse(open('viciauto.py').read()); print('AST OK'))",
+      "Shell(python -c import viciauto; print('import OK'))",
+      "Shell(python -c \"import ast; ast.parse(open('viciauto.py', encoding='utf-8').read()); print('AST OK')\")",
+      "Shell(python -c \"import importlib.util; spec=importlib.util.spec_from_file_location('viciauto','viciauto.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); print('import OK')\")",
+      "Shell(python -c \"import importlib.util; spec=importlib.util.spec_from_file_location('v','viciauto.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); a=m.ViciAuto(); p=a._get_profile('dm3'); print('URL:', a._api_url(p))\")",
+      "Shell(python -c \"import importlib.util; spec=importlib.util.spec_from_file_location('v','viciauto.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); a=m.ViciAuto(); p=a._get_profile('dm3'); s=a._api_session(p); print(a._api(s,p,'user_details',agent_user='6666')[:200]); s.close()\")",
+      "Shell(python -c \"import pathlib, sys; p=pathlib.Path('probe'); p.mkdir(exist_ok=True); (p/'__init__.py').write_text('print(\\\"PACKAGE imported\\\")'); pathlib.Path('probe.py').write_text('import probe; print(\\\"file ran\\\")'); sys.argv=['probe.py']; import runpy; runpy.run_path('probe.py')\")",
+      "Shell(rmdir:*)",
+      "Shell(python \"C:\\Users\\Siam\\AppData\\Local\\Temp\\commandcode\\C--Workspace-Development-ViciAuto\\bd76fad1-88aa-4310-a1b7-acd0a67b2090\\scratchpad\\probe_login.py\")",
+      "Shell(python -c \"import viciauto_core; from viciauto_core.app import ViciAutoApp; from viciauto_core.operations import Operations; from viciauto_core.client import ViciClient; from viciauto_core.config import Config; print('IMPORTS_OK')\")",
+      "Shell(python -c \"from viciauto_core.response import parse_response, ResponseStatus; cases=[('SUCCESS: update_user USER HAS BEEN UPDATED - 6666|4001|','success'),('ERROR: update_user YOU MUST USE A VALID PHONE LOGIN, THIS IS AN OPTIONAL FIELD: |6666|4001|0|0','error'),('NOTICE: update_phone USER DOES NOT HAVE PERMISSION TO DELETE PHONES - 6666|0','notice'),('PHONE ADDED','unknown')]; [print(repr(parse_response(t).status), '==', exp) for t,exp in cases]\")"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
