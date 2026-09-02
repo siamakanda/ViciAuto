@@ -6,8 +6,6 @@ import sys
 
 from colorama import Fore, Style
 
-import tqdm
-
 
 def generate_conf_secret(length: int = 24) -> str:
     alphabet = string.ascii_letters + string.digits
@@ -153,45 +151,3 @@ def item_label(item) -> str:
     if isinstance(item, dict):
         return str(item.get("user_id") or item.get("extension") or item.get("alias_id") or item)
     return str(item)
-
-
-def run_bulk(items, worker, *, title, profile, unit, destructive=False,
-             delay_ms=200, max_retries=2, dry_run=False):
-    """Run a worker over items with retries and a progress bar.
-
-    `worker(item) -> (bool, str)`.
-    """
-    print_banner(title, profile, len(items), f"{len(items)} {unit}s", dry_run=dry_run)
-    if not (confirm_destructive() if destructive else confirm()):
-        return
-
-    ok_count = 0
-    failed = []
-
-    with tqdm.tqdm(total=len(items), desc=title, unit=unit, file=sys.stdout) as pbar:
-        for item in items:
-            last_error = None
-            final_success = False
-
-            for attempt in range(1, max_retries + 2):
-                if dry_run:
-                    success, msg = True, "DRY-RUN"
-                else:
-                    success, msg = worker(item)
-                if success:
-                    final_success = True
-                    break
-                last_error = msg
-                if attempt <= max_retries:
-                    tqdm.tqdm.write(f"    {Fore.YELLOW}[RETRY] {attempt}/{max_retries} - {msg}{Style.RESET_ALL}")
-
-            label = item_label(item)
-            if final_success:
-                ok_count += 1
-            else:
-                failed.append((label, last_error))
-                tqdm.tqdm.write(f"  {Fore.RED}[FAIL]{Style.RESET_ALL} {label} - {last_error}")
-
-            pbar.update(1)
-
-    print_task_summary(ok_count, failed, len(items))

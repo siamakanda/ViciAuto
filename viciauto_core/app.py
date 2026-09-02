@@ -8,14 +8,16 @@ import tqdm
 
 from . import ui
 from .client import ViciClient
-from .config import ADMIN_ENDPOINT, API_ENDPOINT, Config, DEFAULT_SERVER_IP, SAMPLE_CSV_PATH
-from .operations import (
-    ACTION_COPY_PHONE,
-    ACTION_DELETE_ALIAS,
-    ACTION_DELETE_PHONE,
-    ACTION_UPDATE_USER,
-    Operations,
+from .collection import (
+    collect_alias_items,
+    collect_both_delete,
+    collect_phone_items,
+    collect_user_records,
+    resolve_phone_server_ips,
 )
+from .config import ADMIN_ENDPOINT, API_ENDPOINT, Config, DEFAULT_SERVER_IP, SAMPLE_CSV_PATH
+from .operations import ACTION_COPY_PHONE, Operations
+from .runner import run_bulk
 
 
 class ViciAutoApp:
@@ -238,7 +240,7 @@ class ViciAutoApp:
         session = ops.client.make_session()
         ops.set_session(session)
         try:
-            ui.run_bulk(
+            run_bulk(
                 items, worker, title=title, profile=profile, unit=unit,
                 destructive=destructive,
                 delay_ms=self.config.defaults("request_delay_ms", 200),
@@ -249,18 +251,18 @@ class ViciAutoApp:
             session.close()
 
     # ------------------------------------------------------------------
-    # Option 1 — Update user phones & pass
+    # Option 2 — Phone credentials configuration
     # ------------------------------------------------------------------
     def _update_user_phones(self, profile: dict) -> None:
-        records = self._collect_user_records()
+        records = collect_user_records()
         if not records:
             return
         client = ViciClient(profile)
         ops = Operations(client)
-        self._run(profile, "Update User Phones", records, ops, ops.update_user_phone, "user")
+        self._run(profile, "Phone Credentials Configuration", records, ops, ops.update_user_phone, "user")
 
     # ------------------------------------------------------------------
-    # Option 2 — Bulk phone creation / copy
+    # Option 1 — Copy phones
     # ------------------------------------------------------------------
     def _create_phones(self, profile: dict) -> None:
         mode = ui.range_or_csv_menu()
@@ -288,7 +290,11 @@ class ViciAutoApp:
 
         client = ViciClient(profile)
 
-        source_ip = client.phone_ip_map().get(copy_phone)
+        try:
+            source_ip = client.phone_ip_map().get(copy_phone)
+        except Exception as e:
+            source_ip = None
+            print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Could not list phones ({e}).")
         if not source_ip:
             source_ip = profile.get("server_ip", DEFAULT_SERVER_IP)
             print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Source phone {copy_phone} not found on server; using {source_ip}.")
@@ -302,7 +308,7 @@ class ViciAutoApp:
         def worker(rec):
             return ops.copy_phone(rec, copy_phone, conf_secret)
 
-        self._run(profile, "Create/Copy Phones", records, ops, worker, "phone")
+        self._run(profile, "Copy Phones", records, ops, worker, "phone")
 
     # ------------------------------------------------------------------
     # Option 3 — Bulk phone delete & alias delete
@@ -323,15 +329,15 @@ class ViciAutoApp:
         aliases = []
 
         if target == "3":
-            phones, aliases = self._collect_both_delete()
+            phones, aliases = collect_both_delete()
         elif target == "1":
-            phones = self._collect_phone_items()
+            phones = collect_phone_items()
         else:
-            aliases = self._collect_alias_items()
+            aliases = collect_alias_items()
 
         if phones:
             client = ViciClient(profile)
-            phones = self._resolve_phone_server_ips(client, phones)
+            phones = resolve_phone_server_ips(client, phones)
             if not phones:
                 print(f"{Fore.YELLOW}  No target phones found on the server.{Style.RESET_ALL}")
             else:
@@ -405,93 +411,3 @@ class ViciAutoApp:
             print(f"  Failed aliases : {', '.join(x[0] for x in failed_aliases)}")
         print(f"{Fore.CYAN}{Style.BRIGHT}{border}{Style.RESET_ALL}")
         print()
-
-    # ------------------------------------------------------------------
-    # Collection helpers
-    # ------------------------------------------------------------------
-    def _collect_user_records(self, mode: str = None) -> list:
-        mode = mode or ui.range_or_csv_menu()
-
-        if mode == "C":
-            return Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
-                action=ACTION_UPDATE_USER,
-            )
-
-        start = ui.prompt_int("  First user ID: ", 5001)
-        end = ui.prompt_int("  Last user ID:  ", 5015)
-        if start > end:
-            print(f"{Fore.RED}  First user ID must be lower than or equal to the last.{Style.RESET_ALL}")
-            return []
-        return [{"user_id": str(i), "phone_login": str(i), "phone_pass": str(i)}
-                for i in range(start, end + 1)]
-
-    def _collect_phone_items(self, mode: str = None) -> list:
-        mode = mode or ui.range_or_csv_menu()
-        if mode == "C":
-            records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
-                action=ACTION_DELETE_PHONE,
-            )
-            return [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
-                    for r in records if r.get("extension")]
-
-        start = ui.prompt_int("  First extension: ", 4001)
-        end = ui.prompt_int("  Last extension:  ", 4050)
-        if start > end:
-            print(f"{Fore.RED}  First extension must be lower than or equal to the last.{Style.RESET_ALL}")
-            return []
-        return [{"extension": str(i), "server_ip": ""}
-                for i in range(start, end + 1)]
-
-    def _collect_alias_items(self, mode: str = None) -> list:
-        mode = mode or ui.list_or_csv_menu()
-        if mode == "C":
-            records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
-                action=ACTION_DELETE_ALIAS,
-            )
-            return [{"alias_id": r["alias_id"]} for r in records if r.get("alias_id")]
-
-        raw = input("  Comma-separated alias IDs: ").strip()
-        if not raw:
-            print(f"{Fore.YELLOW}  No aliases provided.{Style.RESET_ALL}")
-            return []
-        return [{"alias_id": x.strip()} for x in raw.split(",") if x.strip()]
-
-    def _collect_both_delete(self):
-        mode = ui.range_or_csv_menu()
-        if mode == "C":
-            records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
-            )
-            phones = [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
-                      for r in records
-                      if r.get("action", "").lower() == ACTION_DELETE_PHONE and r.get("extension")]
-            aliases = [{"alias_id": r["alias_id"]}
-                       for r in records
-                       if r.get("action", "").lower() == ACTION_DELETE_ALIAS and r.get("alias_id")]
-            return phones, aliases
-
-        phones = self._collect_phone_items(mode="R")
-        aliases = self._collect_alias_items(mode="L")
-        return phones, aliases
-
-    def _resolve_phone_server_ips(self, client, records: list) -> list:
-        """Resolve each extension's server_ip from the server, dropping misses.
-
-        Extensions absent from the phone list are skipped with a warning; a
-        CSV-supplied server_ip is kept only as a fallback when the extension
-        is not on the server.
-        """
-        ip_map = client.phone_ip_map()
-        resolved = []
-        for rec in records:
-            ext = rec["extension"]
-            if ext in ip_map:
-                resolved.append({"extension": ext, "server_ip": ip_map[ext]})
-            elif rec.get("server_ip"):
-                resolved.append({"extension": ext, "server_ip": rec["server_ip"]})
-            else:
-                print(f"  {Fore.YELLOW}[SKIP]{Style.RESET_ALL} {ext} - not found on server")
-        return resolved
