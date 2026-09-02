@@ -46,14 +46,15 @@ class ViciAutoApp:
 
             options = [(str(i + 1), f"{name}  ->  {p.get('base_url', '?')}  (admin: {p.get('admin_user', '?')})")
                        for i, (name, p) in enumerate(choices)]
+            actions = []
             if allow_new:
-                options.append(("A", "Add a new profile"))
+                actions.append(("A", "Add a new profile"))
             if choices:
-                options.append(("E", "Edit a profile"))
-                options.append(("R", "Remove a profile"))
-            options.append(("0", "Back"))
+                actions.append(("E", "Edit a profile"))
+                actions.append(("R", "Remove a profile"))
+            actions.append(("B", "Back"))
 
-            raw = ui.menu("Saved Profiles", options, prompt="Option", style="dot")
+            raw = ui.menu("Saved Profiles", options, prompt="Option", style="dot", actions=actions)
             if raw == "A":
                 return self._login_flow()
             if raw == "E":
@@ -62,7 +63,7 @@ class ViciAutoApp:
             if raw == "R":
                 self._remove_profile()
                 continue
-            if raw == "0":
+            if raw == "B":
                 return None
             return self.config.get_profile(choices[int(raw) - 1][0])
 
@@ -209,14 +210,14 @@ class ViciAutoApp:
                     ("4", "Delete All Phones & Aliases"),
                     ("5", "Switch Profile"),
                     ("D", f"Toggle dry-run  ({'ON' if self._dry_run else 'OFF'})"),
-                    ("0", "Back"),
+                    ("B", "Back"),
                 ],
                 prompt="Option",
                 subtitle=subtitle,
                 style="dot",
             )
 
-            if choice == "0":
+            if choice == "B":
                 return
             elif choice == "D":
                 self._dry_run = not self._dry_run
@@ -265,10 +266,26 @@ class ViciAutoApp:
     # Option 1 — Copy phones
     # ------------------------------------------------------------------
     def _create_phones(self, profile: dict) -> None:
+        client = ViciClient(profile)
+
+        try:
+            ip_map = client.phone_ip_map()
+        except Exception as e:
+            ip_map = {}
+            print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Could not list phones ({e}).")
+
+        if not ip_map:
+            print(f"  {Fore.YELLOW}No phones found on server to copy from.{Style.RESET_ALL}")
+            return
+
+        sample = sorted(ip_map, key=int, reverse=True)[:3]
+        default_phone = sample[0]
+        print(f"  {Fore.CYAN}Available phones (showing {len(sample)} of {len(ip_map)}):{Style.RESET_ALL}  " + "  ".join(sample))
+
         mode = ui.range_or_csv_menu()
         if mode == "C":
             records = Operations.read_csv(
-                input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+                ui.prompt_csv_path(SAMPLE_CSV_PATH),
                 action=ACTION_COPY_PHONE,
             )
             records = [r for r in records if r.get("extension")]
@@ -284,17 +301,11 @@ class ViciAutoApp:
         if not records:
             return
 
-        copy_phone = input("  Copy settings from phone [7001]: ").strip() or "7001"
+        copy_phone = input(f"  Copy settings from phone [{default_phone}]: ").strip() or default_phone
         conf_secret = ui.generate_conf_secret()
         conf_secret = input(f"  Conference secret (press Enter to use generated) [{conf_secret}]: ").strip() or conf_secret
 
-        client = ViciClient(profile)
-
-        try:
-            source_ip = client.phone_ip_map().get(copy_phone)
-        except Exception as e:
-            source_ip = None
-            print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Could not list phones ({e}).")
+        source_ip = ip_map.get(copy_phone)
         if not source_ip:
             source_ip = profile.get("server_ip", DEFAULT_SERVER_IP)
             print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Source phone {copy_phone} not found on server; using {source_ip}.")

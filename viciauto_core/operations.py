@@ -2,12 +2,13 @@
 
 import csv
 import os
+import re
 
 from colorama import Fore, Style
 
 from .client import ADD_ACTION_CODE
 from .config import DEFAULT_SERVER_IP
-from .response import ResponseStatus, parse_response
+from .response import parse_response
 
 ACTION_COPY_PHONE = "copy_phone"
 ACTION_UPDATE_USER = "update_user"
@@ -87,22 +88,19 @@ class Operations:
         if not http_resp.ok:
             return False, f"HTTP {http_resp.status_code}"
 
-        resp = parse_response(http_resp.text)
-        # admin.php copy flow does not always emit a STATUS: line; fall back to
-        # body inspection for the success/duplicate cues.
-        if resp.ok:
-            return True, "Created"
-        if resp.status == ResponseStatus.ERROR:
-            return False, self._friendly_error(resp.reason, {
+        # admin.php reports the copy outcome in the page body, not via a
+        # STATUS: line. Success leaves "PHONE NOT COPIED" absent; failure
+        # includes "PHONE NOT COPIED - <reason>".
+        text = http_resp.text.upper()
+        if "PHONE NOT COPIED" in text:
+            match = re.search(r"PHONE NOT COPIED\s*[-:]\s*([^<\n]+)", text)
+            reason = match.group(1).strip() if match else "Copy failed"
+            return False, self._friendly_error(reason, {
+                "SOURCE PHONE DOES NOT EXIST": "Source phone not found",
                 "ALREADY EXISTS": "Already exists",
                 "DUPLICATE": "Already exists",
             })
-        text = http_resp.text.upper()
-        if "PHONE ADDED" in text or f"PHONE {ext} ADDED" in text:
-            return True, "Created"
-        if "ALREADY EXISTS" in text or "DUPLICATE" in text:
-            return False, "Already exists"
-        return False, f"HTTP {http_resp.status_code}"
+        return True, "Created"
 
     def delete_phone(self, record: dict) -> tuple:
         extension = record["extension"]

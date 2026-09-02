@@ -2,8 +2,9 @@
 """ViciAuto — consolidated ViciDial automation TUI (modular entry point)."""
 
 import argparse
+import sys
 
-from colorama import init
+from colorama import Fore, Style, init
 
 from viciauto_core.app import ViciAutoApp
 
@@ -21,7 +22,11 @@ def main():
         app.config.list_profiles()
         return
 
-    app.run()
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}Interrupted — shutting down.{Style.RESET_ALL}")
+        sys.exit(130)
 
 
 if __name__ == "__main__":

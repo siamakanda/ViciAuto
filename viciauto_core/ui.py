@@ -1,5 +1,6 @@
 """Console UI helpers (prompts, banners, summaries)."""
 
+import os
 import secrets
 import string
 import sys
@@ -56,10 +57,12 @@ def choose_key(valid_keys, prompt: str = "Select: ", default=None) -> str:
             return key
 
 
-def menu(title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, subtitle=None, style="bracket") -> str:
+def menu(title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, subtitle=None, style="bracket", actions=None) -> str:
     """Render a bordered menu and return the selected key (upper-cased).
 
-    `options` is a list of (key, label) tuples. `style` is "bracket" or "dot".
+    `options` is a list of (key, label) tuples rendered vertically. `actions`,
+    if given, is a list of (key, label) tuples rendered on a single horizontal
+    row below a separator border. `style` is "bracket" or "dot".
     """
     border = "─" * width
     print()
@@ -73,8 +76,13 @@ def menu(title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, sub
             print(f"  {Fore.GREEN}{key}.{Style.RESET_ALL} {label}")
         else:
             print(f"  [{Fore.GREEN}{key}{Style.RESET_ALL}] {label}")
+    if actions:
+        print(f"{Fore.CYAN}{border}{Style.RESET_ALL}")
+        parts = [f"[{Fore.GREEN}{key}{Style.RESET_ALL}] {label}" for key, label in actions]
+        print("  " + "    ".join(parts))
     print(f"{Fore.CYAN}{border}{Style.RESET_ALL}")
-    return choose_key([k for k, _ in options], f"  {prompt}: ", default=default)
+    valid_keys = [k for k, _ in options] + [k for k, _ in (actions or [])]
+    return choose_key(valid_keys, f"  {prompt}: ", default=default)
 
 
 def range_or_csv_menu() -> str:
@@ -95,6 +103,11 @@ def prompt_int(prompt: str, default: int) -> int:
         if raw.lstrip("-").isdigit():
             return int(raw)
         print(f"{Fore.RED}  Must be a numeric value.{Style.RESET_ALL}")
+
+
+def prompt_csv_path(default_path: str) -> str:
+    """Prompt for a CSV path, showing a friendly basename as the default."""
+    return input(f"  CSV path [{os.path.basename(default_path)}]: ").strip() or default_path
 
 
 def confirm() -> bool:

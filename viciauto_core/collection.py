@@ -17,7 +17,7 @@ def collect_user_records(mode: str = None) -> list:
 
     if mode == "C":
         return Operations.read_csv(
-            input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+            ui.prompt_csv_path(SAMPLE_CSV_PATH),
             action=ACTION_UPDATE_USER,
         )
 
@@ -34,7 +34,7 @@ def collect_phone_items(mode: str = None) -> list:
     mode = mode or ui.range_or_csv_menu()
     if mode == "C":
         records = Operations.read_csv(
-            input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+            ui.prompt_csv_path(SAMPLE_CSV_PATH),
             action=ACTION_DELETE_PHONE,
         )
         return [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
@@ -53,7 +53,7 @@ def collect_alias_items(mode: str = None) -> list:
     mode = mode or ui.list_or_csv_menu()
     if mode == "C":
         records = Operations.read_csv(
-            input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH,
+            ui.prompt_csv_path(SAMPLE_CSV_PATH),
             action=ACTION_DELETE_ALIAS,
         )
         return [{"alias_id": r["alias_id"]} for r in records if r.get("alias_id")]
@@ -69,7 +69,7 @@ def collect_both_delete():
     mode = ui.range_or_csv_menu()
     if mode == "C":
         records = Operations.read_csv(
-            input(f"  CSV path [{SAMPLE_CSV_PATH}]: ").strip() or SAMPLE_CSV_PATH
+            ui.prompt_csv_path(SAMPLE_CSV_PATH)
         )
         phones = [{"extension": r["extension"], "server_ip": r.get("server_ip", "")}
                   for r in records
