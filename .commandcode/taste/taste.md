@@ -22,3 +22,4 @@
 - Prefers concise menu labels that name the action without implementation-detail suffixes (e.g. "Copy Phones" instead of "Create / copy phones (range / CSV)"). Confidence: 0.6
 - Prefers mnemonic single-letter menu keys matching the action's initial (e.g. "A" for Add, not "N" for New). Confidence: 0.6
 - Prefers numeric menu options rendered in `1.` dot format rather than `[1]` bracketed-key format. Confidence: 0.6
+- Works on Windows and prefers plain batch scripts (e.g. `install.bat` and `run.bat`) at the project root for one-step setup (venv + dependencies) and launch, rather than manual commands or cross-platform tooling. Confidence: 0.6

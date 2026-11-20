@@ -1,15 +1,17 @@
+import os
 import secrets
 import string
 import time
+
 import requests
 
-# Configuration
-BASE_URL = "https://dm3.callengine.org/vicidial/admin.php"
-AUTH_USER = "6666"
-AUTH_PASS = "***REMOVED***"
+# Configuration — credentials come from the environment, never from source.
+BASE_URL = os.environ.get("VICIAUTO_BASE_URL", "") + "/vicidial/admin.php"
+AUTH_USER = os.environ.get("VICIAUTO_ADMIN_USER", "")
+AUTH_PASS = os.environ.get("VICIAUTO_ADMIN_PASS", "")
 
 # Target Server IP where extensions should be registered
-SERVER_IP = "***REMOVED***"
+SERVER_IP = os.environ.get("VICIAUTO_SERVER_IP", "")
 
 # Template Extension to clone settings from (Extension|ServerIP)
 SOURCE_PHONE_TEMPLATE = f"7001|{SERVER_IP}"

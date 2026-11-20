@@ -20,18 +20,28 @@ def read_key() -> str:
     except ImportError:
         import termios
         import tty
+
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            return sys.stdin.read(1)
+            ch = sys.stdin.read(1)
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        if ch == "\x03":
+            raise KeyboardInterrupt
+        return ch
 
     ch = msvcrt.getch()
+    if ch == b"\x03":
+        raise KeyboardInterrupt
+    if ch in (b"\x00", b"\xe0"):
+        # Arrow/function keys arrive as a two-byte sequence; drop the code.
+        msvcrt.getch()
+        return ""
     try:
         return ch.decode("utf-8")
-    except (UnicodeDecodeError, AttributeError):
+    except UnicodeDecodeError:
         return ""
 
 
@@ -57,12 +67,29 @@ def choose_key(valid_keys, prompt: str = "Select: ", default=None) -> str:
             return key
 
 
-def menu(title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, subtitle=None, style="bracket", actions=None) -> str:
+def choose_line(valid_keys, prompt: str = "Select: ", default=None) -> str:
+    """Prompt for a full line (needed when options exceed single-keypress range)."""
+    valid = {str(k).upper() for k in valid_keys}
+    if default is not None:
+        default = str(default).upper()
+    while True:
+        raw = input(prompt).strip().upper()
+        if not raw and default is not None:
+            return default
+        if raw in valid:
+            return raw
+        print(f"{Fore.RED}  Invalid selection.{Style.RESET_ALL}")
+
+
+def menu(
+    title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, subtitle=None, actions=None
+) -> str:
     """Render a bordered menu and return the selected key (upper-cased).
 
     `options` is a list of (key, label) tuples rendered vertically. `actions`,
-    if given, is a list of (key, label) tuples rendered on a single horizontal
-    row below a separator border. `style` is "bracket" or "dot".
+    if given, is a list of (key, label) tuples rendered vertically below a
+    separator border. Menus with any multi-character key fall back to line
+    input so numeric options above 9 stay reachable.
     """
     border = "─" * width
     print()
@@ -72,16 +99,15 @@ def menu(title, options, *, width=MENU_WIDTH, prompt="Choice", default=None, sub
         print(subtitle)
     print(f"{border}{Style.RESET_ALL}")
     for key, label in options:
-        if style == "dot":
-            print(f"  {Fore.GREEN}{key}.{Style.RESET_ALL} {label}")
-        else:
-            print(f"  [{Fore.GREEN}{key}{Style.RESET_ALL}] {label}")
+        print(f"  {Fore.GREEN}{key}.{Style.RESET_ALL} {label}")
     if actions:
         print(f"{Fore.CYAN}{border}{Style.RESET_ALL}")
-        parts = [f"[{Fore.GREEN}{key}{Style.RESET_ALL}] {label}" for key, label in actions]
-        print("  " + "    ".join(parts))
+        for key, label in actions:
+            print(f"  {Fore.GREEN}{key}.{Style.RESET_ALL} {label}")
     print(f"{Fore.CYAN}{border}{Style.RESET_ALL}")
     valid_keys = [k for k, _ in options] + [k for k, _ in (actions or [])]
+    if any(len(str(k)) > 1 for k in valid_keys):
+        return choose_line(valid_keys, f"  {prompt}: ", default=default)
     return choose_key(valid_keys, f"  {prompt}: ", default=default)
 
 
@@ -112,7 +138,11 @@ def prompt_csv_path(default_path: str) -> str:
 
 def confirm() -> bool:
     while True:
-        resp = input(f"  Proceed? ({Fore.GREEN}Y{Style.RESET_ALL}/{Fore.RED}n{Style.RESET_ALL}): ").strip().lower()
+        resp = (
+            input(f"  Proceed? ({Fore.GREEN}Y{Style.RESET_ALL}/{Fore.RED}n{Style.RESET_ALL}): ")
+            .strip()
+            .lower()
+        )
         if resp in ("", "y", "yes"):
             return True
         if resp in ("n", "no"):
@@ -121,15 +151,29 @@ def confirm() -> bool:
 
 
 def confirm_destructive() -> bool:
-    print(f"{Fore.RED}{Style.BRIGHT}  This action permanently deletes data and cannot be undone.{Style.RESET_ALL}")
+    print(
+        f"{Fore.RED}{Style.BRIGHT}  This action permanently deletes data "
+        f"and cannot be undone.{Style.RESET_ALL}"
+    )
     while True:
-        resp = input(f"  Type {Fore.RED}DELETE{Style.RESET_ALL} to continue, or {Fore.GREEN}n{Style.RESET_ALL} to cancel: ").strip()
+        resp = input(
+            f"  Type {Fore.RED}DELETE{Style.RESET_ALL} to continue, "
+            f"or {Fore.GREEN}n{Style.RESET_ALL} to cancel: "
+        ).strip()
         if resp == "DELETE":
             return True
         if resp.lower() in ("n", "no", "cancel", ""):
             print(f"{Fore.YELLOW}  Cancelled.{Style.RESET_ALL}")
             return False
         print(f"{Fore.RED}  Type exactly 'DELETE' to continue, or 'n' to cancel.{Style.RESET_ALL}")
+
+
+def confirm_large_batch(count: int, threshold: int) -> bool:
+    print(
+        f"{Fore.YELLOW}{Style.BRIGHT}  This run will process {count} items "
+        f"(above the {threshold}-item safety limit).{Style.RESET_ALL}"
+    )
+    return confirm()
 
 
 def print_banner(title: str, profile: dict, count: int, source: str, dry_run: bool = False) -> None:

@@ -4,15 +4,29 @@ import re
 
 import requests
 import urllib3
+from colorama import Fore, Style
 
 from .config import ADMIN_ENDPOINT, API_ENDPOINT
-from .response import parse_response
+from .response import ResponseStatus, parse_response
 
-ADD_ACTION_CODE = "21222222222"
+TIMEOUT = (10, 30)
+
+# admin.php action codes.
+ADMIN_COPY_PHONE = "21222222222"
+ADMIN_LIST_PHONES = "10000000000"
+ADMIN_LIST_ALIASES = "12000000000"
+
+# Upper bound on paginated list scraping, so a server that echoes page 1
+# forever cannot spin us in a loop.
+MAX_LIST_PAGES = 50
 
 
-class AuthError(Exception):
-    pass
+def _mentions_user(text: str, user: str) -> bool:
+    """True when `text` names `user` as a whole token and is not an error body."""
+    if parse_response(text).status == ResponseStatus.ERROR:
+        return False
+    pattern = rf"(?<![A-Za-z0-9_-]){re.escape(user)}(?![A-Za-z0-9_-])"
+    return re.search(pattern, text) is not None
 
 
 class ViciClient:
@@ -27,6 +41,16 @@ class ViciClient:
         if not self.profile.get("verify_ssl", True):
             session.verify = False
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            print(
+                f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} TLS verification disabled for "
+                f"{self.base_url} (verify_ssl is off)."
+            )
+        return session
+
+    def admin_session(self) -> requests.Session:
+        """An admin.php session with basic auth; reuse it across a bulk run."""
+        session = self.make_session()
+        session.auth = (self.profile["admin_user"], self.profile["admin_pass"])
         return session
 
     # ------------------------------------------------------------------
@@ -61,7 +85,9 @@ class ViciClient:
             "pass": self.profile["admin_pass"],
         }
         full.update(params)
-        resp = session.get(self.api_url, params=full, timeout=20)
+        resp = session.get(self.api_url, params=full, timeout=TIMEOUT)
+        if resp.status_code >= 500:
+            raise requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
         return resp.text.strip()
 
     def validate_login(self) -> bool:
@@ -72,51 +98,71 @@ class ViciClient:
             return False
         finally:
             session.close()
-        resp = parse_response(text)
-        return not resp.status == "error" and self.profile["admin_user"] in text
+        return _mentions_user(text, self.profile["admin_user"])
 
     # ------------------------------------------------------------------
     # admin.php helpers
     # ------------------------------------------------------------------
-    def _admin_session(self) -> requests.Session:
-        session = self.make_session()
-        session.auth = (self.profile["admin_user"], self.profile["admin_pass"])
-        return session
+    def fetch_admin(self, params: dict, session: requests.Session = None) -> str:
+        if session is not None:
+            resp = session.get(self.admin_url, params=params, timeout=TIMEOUT)
+            resp.raise_for_status()
+            return resp.text
 
-    def fetch_admin(self, params: dict) -> str:
-        session = self._admin_session()
+        session = self.admin_session()
         try:
-            resp = session.get(self.admin_url, params=params, timeout=20)
+            resp = session.get(self.admin_url, params=params, timeout=TIMEOUT)
+            resp.raise_for_status()
             return resp.text
         finally:
             session.close()
 
-    def post_admin(self, data: dict) -> requests.Response:
-        session = self._admin_session()
-        resp = session.post(self.admin_url, data=data, timeout=20)
-        session.close()
-        return resp
+    def post_admin(self, data: dict, session: requests.Session = None) -> requests.Response:
+        if session is not None:
+            return session.post(self.admin_url, data=data, timeout=TIMEOUT)
 
-    def list_phones(self) -> list:
-        """Scrape the phone list page for (extension, server_ip) pairs."""
-        html = self.fetch_admin({"ADD": "10000000000"})
-        pairs = set(re.findall(r'extension=([0-9]+)&server_ip=([0-9.]+)', html))
+        session = self.admin_session()
+        try:
+            return session.post(self.admin_url, data=data, timeout=TIMEOUT)
+        finally:
+            session.close()
+
+    # ------------------------------------------------------------------
+    # List scraping
+    # ------------------------------------------------------------------
+    def _scrape(self, params: dict, pattern: str, session: requests.Session = None) -> set:
+        """Walk admin.php list pages until a page adds nothing new."""
+        found = set()
+        for page in range(1, MAX_LIST_PAGES + 1):
+            html = self.fetch_admin({**params, "page": str(page)}, session=session)
+            page_items = set(re.findall(pattern, html))
+            if not page_items - found:
+                break
+            found |= page_items
+        return found
+
+    def list_phones(self, session: requests.Session = None) -> list:
+        """Scrape the phone list pages for (extension, server_ip) pairs."""
+        pairs = self._scrape(
+            {"ADD": ADMIN_LIST_PHONES},
+            r"extension=([0-9]+)&server_ip=([0-9.]+)",
+            session=session,
+        )
         return sorted(pairs)
 
-    def list_aliases(self) -> list:
-        """Scrape the phone alias list page for alias_id values."""
-        html = self.fetch_admin({"ADD": "12000000000"})
-        ids = set(re.findall(r'alias_id=([^&"\']+)', html))
+    def list_aliases(self, session: requests.Session = None) -> list:
+        """Scrape the phone alias list pages for alias_id values."""
+        ids = self._scrape({"ADD": ADMIN_LIST_ALIASES}, r"alias_id=([^&\"']+)", session=session)
         return sorted(ids)
 
-    def phone_ip_map(self) -> dict:
-        """Return {extension: server_ip} for every phone on the server.
+    def phone_ip_map(self, session: requests.Session = None) -> dict:
+        """Return {extension: [server_ip, ...]} for every phone on the server.
 
-        Used to auto-resolve the server_ip of a target extension so operators
-        don't have to type it. When an extension exists on multiple servers,
-        the first (sorted) IP wins.
+        A single extension may be registered on more than one Asterisk server;
+        every IP is kept so a destructive operation can target all of them
+        instead of silently deleting just the first.
         """
         mapping = {}
-        for ext, ip in self.list_phones():
-            mapping.setdefault(ext, ip)
-        return mapping
+        for ext, ip in self.list_phones(session=session):
+            mapping.setdefault(ext, []).append(ip)
+        return {ext: sorted(ips) for ext, ips in mapping.items()}

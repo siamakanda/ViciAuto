@@ -1,8 +1,0 @@
-action,user_id,user_password,phone_extension,server_ip,phone_pass,full_name,alias_id
-copy_phone,,,7001,***REMOVED***,,,
-copy_phone,,,7002,***REMOVED***,,,
-update_user,5001,5001,5001,,5001,Agent One,
-update_user,5002,5002,5002,,5002,Agent Two,
-update_user,5003,5003,5003,,5003,Agent Three,
-delete_phone,,,7001,***REMOVED***,,,
-delete_alias,,,,,,,SALES_TEAM

@@ -1,5 +1,11 @@
 # Secrets — never commit plaintext credentials
 servers.json
+servers.json.*
+audit.log
+
+# Bulk-input user data — templates/ is the committed reference shape
+*.csv
+!templates/*.csv
 
 # Python
 __pycache__/
@@ -7,3 +13,5 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
+.ruff_cache/

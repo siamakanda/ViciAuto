@@ -1,0 +1,8 @@
+action,user_id,user_password,phone_extension,server_ip,phone_pass,full_name,alias_id
+copy_phone,,,,4001,,,
+copy_phone,,,,4002,,,
+copy_phone,,,,4003,,,
+update_user,5001,secret,5001,,secret,Agent One,
+update_user,5002,secret,5002,,secret,Agent Two,
+delete_phone,,,,4002,,,
+delete_alias,,,,,,,SALES_TEAM

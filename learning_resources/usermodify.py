@@ -15,13 +15,12 @@ import json
 import os
 import sys
 import time
-from typing import Optional
 
 import colorama
-from colorama import Fore, Style
 import requests
 import tqdm
 import urllib3
+from colorama import Fore, Style
 
 colorama.init(autoreset=True)
 
@@ -345,7 +344,7 @@ class UserModifier:
     def _print_banner(self, name: str, profile: dict, count: int, source: str) -> None:
         print()
         print(f"{Fore.CYAN}{Style.BRIGHT}{'─' * 60}")
-        print(f"  Bulk User Phone Modifier")
+        print("  Bulk User Phone Modifier")
         print(f"  Profile  : {name}  ->  {profile['base_url']}")
         print(f"  Admin    : {profile['admin_user']}")
         print(f"  Users    : {count}  ({source})")
@@ -429,7 +428,7 @@ class UserModifier:
         if pass_override:
             profile["admin_pass"] = pass_override
 
-        dry_run_input = input(f"  Dry run? (y/N): ").strip().lower()
+        dry_run_input = input("  Dry run? (y/N): ").strip().lower()
         dry_run = dry_run_input in ("y", "yes")
 
         self._print_banner(profile_name, profile, len(users), source)

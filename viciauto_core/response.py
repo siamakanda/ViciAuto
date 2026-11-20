@@ -2,9 +2,21 @@
 
 ViciDial returns HTTP 200 for both success and error responses, so the HTTP
 status cannot be trusted — the body text must be inspected. Every worker should
-route its response text through `parse_response` instead of doing its own
+route its response text through one of these parsers instead of doing its own
 substring matching.
 """
+
+import re
+
+# An HTML login/permission page carries no failure marker, so it must never be
+# mistaken for success.
+LOGIN_MARKERS = (
+    "PLEASE LOGIN",
+    "INVALID USERNAME",
+    "INVALID PASSWORD",
+    "PERMISSION DENIED",
+    "NO PERMISSION",
+)
 
 
 class ResponseStatus:
@@ -15,10 +27,11 @@ class ResponseStatus:
 
 
 class ParsedResponse:
-    def __init__(self, status: str, reason: str = "", data: str = ""):
+    def __init__(self, status: str, reason: str = "", data: str = "", retryable: bool = False):
         self.status = status
         self.reason = reason
         self.data = data
+        self.retryable = retryable
 
     @property
     def ok(self) -> bool:
@@ -70,3 +83,27 @@ def parse_response(text: str) -> ParsedResponse:
         return ParsedResponse(ResponseStatus.NOTICE, reason, data)
 
     return ParsedResponse(ResponseStatus.UNKNOWN, reason=line[:200])
+
+
+def parse_copy_result(text: str) -> ParsedResponse:
+    """Parse an `admin.php` copy-phone page.
+
+    The copy flow returns HTML rather than a `STATUS:` line, so success is
+    detected positively: the body must lack the `PHONE NOT COPIED` marker *and*
+    lack any login/permission page marker. The absence of a failure string alone
+    is not sufficient evidence of success.
+    """
+    if not text or not text.strip():
+        return ParsedResponse(ResponseStatus.UNKNOWN, reason="Empty response", retryable=True)
+
+    upper = text.upper()
+
+    if "PHONE NOT COPIED" in upper:
+        match = re.search(r"PHONE NOT COPIED\s*[-:]\s*([^<\n]+)", upper)
+        reason = match.group(1).strip() if match else "Copy failed"
+        return ParsedResponse(ResponseStatus.ERROR, reason=reason)
+
+    if any(marker in upper for marker in LOGIN_MARKERS):
+        return ParsedResponse(ResponseStatus.ERROR, reason="ADMIN LOGIN REJECTED")
+
+    return ParsedResponse(ResponseStatus.SUCCESS, reason="Created")

@@ -2,7 +2,7 @@
     // ============================================================
     //  CONFIGURABLE SETTINGS & USER LIST
     // ============================================================
-    const ADMIN_PASS       = "***REMOVED***";
+    const ADMIN_PASS       = "";  // never hardcode credentials - enter at the prompt
     // Uses relative path by default; falls back to current origin endpoint
     const API_ENDPOINT     = window.location.origin + "/vicidial/non_agent_api.php";
     const REQUEST_DELAY_MS = 200;

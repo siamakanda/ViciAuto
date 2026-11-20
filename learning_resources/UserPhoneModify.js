@@ -2,7 +2,7 @@
     // ============================================================
     //  CONFIGURABLE SETTINGS — tweak these defaults as needed
     // ============================================================
-    const ADMIN_PASS      = "***REMOVED***";
+    const ADMIN_PASS      = "";  // never hardcode credentials - enter at the prompt
     const API_ENDPOINT    = "./non_agent_api.php";
     const REQUEST_DELAY_MS = 200;
     const DEFAULT_START   = 5001;
